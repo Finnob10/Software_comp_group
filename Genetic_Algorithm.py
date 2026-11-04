@@ -1,4 +1,3 @@
-
 import random
 import time
 import operator
@@ -6,7 +5,7 @@ import matplotlib.pyplot as plt
 import service_simulator
 import numpy as np
 
-
+'''
 class Knapsack(object):
 
     def __init__(self, populationSize, numGenerations, mutationRate,
@@ -55,7 +54,16 @@ class Knapsack(object):
         means = []
         maxs = []
 
-        for _ in range(3):
+        # CHANGE 4: save RNG state so seeding doesn't affect the GA's randomness
+        state = random.getstate()
+        np_state = np.random.get_state()
+
+        for rep in range(3):
+
+            # CHANGE 4: fixed seed per replication -> every allocation
+            # is evaluated on the same scenarios
+            random.seed(rep)
+            np.random.seed(rep)
 
             _x, wait_times_per_service = service_simulator.init_and_simulate(
                 employee_setting
@@ -86,6 +94,10 @@ class Knapsack(object):
             means.append(mean_wait)
             maxs.append(max_wait)
 
+        # CHANGE 4: restore RNG state
+        random.setstate(state)
+        np.random.set_state(np_state)
+
         fitness_score = np.mean(means) * 0.89 + np.mean(maxs) * 0.11
 
         return fitness_score
@@ -108,6 +120,10 @@ class Knapsack(object):
             self.bestIndividual = self.fitness[0][1].copy()
             self.bestfoundAt = generationNumber
             self.patienceCounter = 0
+
+        # CHANGE 3: count generations without improvement here
+        else:
+            self.patienceCounter += 1
 
         print("Evaluation complete")
 
@@ -132,26 +148,34 @@ class Knapsack(object):
 
         print("Parents selected")
 
-    def crossover(self, sack1, sack2, threshold):
+    # CHANGE 1: repair() restores the 80-employee total, keeping every gene >= 1
+    def repair(self, ind):
 
-        while threshold <= len(sack1):
+        ind = ind.copy()
+        diff = sum(ind) - 80
 
-            tmp_1 = sack1[threshold:]
-            tmp_2 = sack2[threshold:]
+        while diff != 0:
 
-            sack_1 = sack1[:threshold]
-            sack_2 = sack2[:threshold]
+            i = random.randrange(len(ind))
 
-            if sum(tmp_1 + sack_2) == 80:
+            if diff > 0 and ind[i] > 1:
+                ind[i] -= 1
+                diff -= 1
 
-                sack_1.extend(tmp_2)
-                sack_2.extend(tmp_1)
+            elif diff < 0:
+                ind[i] += 1
+                diff += 1
 
-                return sack_1, sack_2
+        return ind
 
-            threshold += 1
+    def crossover(self, sack1, sack2):
 
-        return False
+        cut = random.randrange(1, len(sack1))
+
+        c1 = sack1[:cut] + sack2[cut:]
+        c2 = sack2[:cut] + sack1[cut:]
+
+        return self.repair(c1), self.repair(c2)
 
 
     def mutation(self, employee_setting):
@@ -196,41 +220,22 @@ class Knapsack(object):
 
             newPopulation.append(self.bestIndividual.copy())
 
-            for i in range(len(self.parents)):
-
-                parent1 = self.parents[i]
-
-                for j in range(i + 1, len(self.parents)):
-
-                    parent2 = self.parents[j]
-
-                    result = self.crossover(parent1, parent2, 1)
-
-                    if result is not False:
-
-                        child1, child2 = result
-
-                        newPopulation.append(self.mutation(child1))
-                        newPopulation.append(self.mutation(child2))
-
-                    if len(newPopulation) >= self.populationSize:
-                        break
-
-                if len(newPopulation) >= self.populationSize:
-                    break
 
             while len(newPopulation) < self.populationSize:
 
-                newPopulation.append(
-                    random.choice(self.parents).copy()
-                )
+                p1, p2 = random.sample(self.parents, 2)
+
+                child1, child2 = self.crossover(p1, p2)
+
+                newPopulation.append(self.mutation(child1))
+                newPopulation.append(self.mutation(child2))
 
             newPopulation = newPopulation[:self.populationSize]
 
             for individual in newPopulation:
                 self.validateIndividual(individual)
 
-            self.patienceCounter += 1
+            # CHANGE 3: removed `self.patienceCounter += 1` (now in evaluation)
 
             self.listOfBestFitness.append(self.bestFitness)
 
@@ -259,9 +264,27 @@ class Knapsack(object):
         ) 
 
 ga = Knapsack(
-    populationSize=20,
+    populationSize=50,
     numGenerations=10,
     mutationRate=0.05
 )
 
-ga.run()
+ga.run()  
+
+''' 
+
+employee_setting = [1, 1, 1, 1, 2, 1, 1, 1, 3, 2, 1, 1, 1, 1, 1, 1, 2, 1, 1, 6, 2, 1, 2, 1, 1, 1, 1, 1, 1, 3, 2, 3, 1, 1, 1, 1, 1, 2, 6, 1, 2, 1, 1, 1, 2, 4, 1, 1, 2, 2]
+means = [0 for _ in range(10)]
+maxs = [0 for _ in range(10)]
+for _ in range(10):
+  _x, wait_times_per_service = service_simulator.init_and_simulate(employee_setting)
+  sums = [np.sum(wait_times_per_service[j]) for j in range(len(wait_times_per_service))]
+  counts = [len(wait_times_per_service[j]) for j in range(len(wait_times_per_service))]
+  maximums= [np.max(wait_times_per_service[j]) for j in range(len(wait_times_per_service))]
+  means[_] =  np.sum(sums)/np.sum(counts)
+  maxs[_] = np.max(maximums)
+
+print(means)
+print(maxs)
+print("Mean waiting time averaged over 10 simulations : ", np.mean(means))
+print("Max waiting time  averaged over 10 simulations : ", np.mean(maxs))
